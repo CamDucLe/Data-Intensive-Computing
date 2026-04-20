@@ -6,7 +6,9 @@ import os
 class MRWordCount(MRJob):
     def mapper_init(self):
         base_dir = os.path.dirname(__file__)
-        stopwords_path = os.path.join(base_dir, "stopwords.txt")
+        base_dir = os.path.dirname(__file__)
+        project_root = os.path.dirname(base_dir)      
+        stopwords_path = os.path.join(project_root, "stopwords.txt")
 
         with open(stopwords_path, encoding="utf-8") as f:
             self.stopwords = set(w.strip() for w in f)
