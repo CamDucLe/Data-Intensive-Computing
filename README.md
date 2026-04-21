@@ -41,10 +41,10 @@ Output: (term, category) → count
 
 ### 2. Job 2: Statistics Aggregation
 Computes:
-- Total documents (**N**)
-- Term counts (**$N_t$**)
-- Category counts (**$N_c$**)
-- Joint counts (**$N_{tc}$**)
+- Total documents ($N$)
+- Term counts ($N_t$)
+- Category counts ($N_c$)
+- Joint counts ($N_{tc}$)
 
 ---
 

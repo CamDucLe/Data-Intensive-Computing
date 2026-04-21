@@ -4,14 +4,15 @@ import re
 import os
 
 class MRWordCount(MRJob):
+    # Parametrize file
+    def configure_args(self):
+        super().configure_args()
+        self.add_file_arg('--stopwords')
+        
     # Pre-process of the stopwords
     # Must be included in mapper_init so it can be accesible through the mapper method
     def mapper_init(self):
-        base_dir = os.path.dirname(__file__)
-        project_root = os.path.dirname(base_dir)      
-        stopwords_path = os.path.join(project_root, "stopwords.txt")
-
-        with open(stopwords_path, encoding="utf-8") as f:
+        with open(self.options.stopwords) as f:
             # Unique stopwords without whitespaces
             self.stopwords = set(w.strip() for w in f)
 
@@ -28,7 +29,7 @@ class MRWordCount(MRJob):
         tokens = re.split(r"[ \t\d\(\)\[\]\{\}\.\!\?,;:\+=\-_\"'`~#@&\*%€\$§\\/<>^]+",
                           text.lower())
 
-        # Uset set to avoid duplicates
+        # Used set to avoid duplicates
         seen = set()
         for token in tokens:
             # Avoid 1-character words and stopwords
@@ -38,6 +39,10 @@ class MRWordCount(MRJob):
         # Returns <word>, <category>, 1
         for token in seen:
             yield (token, category), 1
+
+    # To avoid duplicates
+    def combiner(self, key, values):
+        yield key, sum(values)
 
     # Returns <word>, <category>, sum across all lines of the document
     def reducer(self, key, values):
