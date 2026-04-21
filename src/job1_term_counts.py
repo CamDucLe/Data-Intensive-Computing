@@ -25,7 +25,7 @@ class MRWordCount(MRJob):
             return
         
         # Divide all the words and lowers them
-        tokens = re.split(r"[ \t\d\(\)\[\]\{\}\.\!\?,;:\+=\-_\"'`~#@&\*%€\$§\\/]+",
+        tokens = re.split(r"[ \t\d\(\)\[\]\{\}\.\!\?,;:\+=\-_\"'`~#@&\*%€\$§\\/<>^]+",
                           text.lower())
 
         # Uset set to avoid duplicates

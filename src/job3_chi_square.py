@@ -65,7 +65,7 @@ class MRChiSquareFinal(MRJob):
 
             yield None, output
 
-        all_terms = sorted(t for t in N_t.keys() if t.isalpha())
+        all_terms = sorted(N_t.keys())
         dictionary_line = "dictionary: " + " ".join(all_terms)
 
         yield None, dictionary_line
