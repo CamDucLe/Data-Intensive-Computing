@@ -14,7 +14,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "mrjob", specifier = "==0.7.4" },
-    { name = "packaging" },
+    { name = "packaging", specifier = "==26.1" },
 ]
 
 [package.metadata.requires-dev]

@@ -41,9 +41,12 @@ def main():
     # Run the MapReduce job and write output to output.txt
     with job.make_runner() as runner:
         runner.run()
-        with open(os.path.abspath(args.output_file_path), 'w') as f:    
-            for key, value in job.parse_output(runner.cat_output()):
-                # Write result to output.txt
+
+        results = list(job.parse_output(runner.cat_output()))
+        results = sorted(results, key=lambda x: x[0])  # type: ignore
+
+        with open(os.path.abspath(args.output_file_path), "w") as f:
+            for key, value in results:
                 f.write(f"{key} {value}\n")
 
         print(f"Output written to {os.path.abspath(args.output_file_path)}")
