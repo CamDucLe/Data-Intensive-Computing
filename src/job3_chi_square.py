@@ -1,20 +1,29 @@
-from mrjob.job import MRJob
-from mrjob.protocol import RawValueProtocol
 import json
+from mrjob.job import MRJob
 from collections import defaultdict
+from mrjob.protocol import RawValueProtocol
 
 class MRChiSquareFinal(MRJob):
-
+    # Allows to save the results in the desired format
     OUTPUT_PROTOCOL = RawValueProtocol
 
+    # Works with the output of the Job 2
+    # ["TERM", <word>] sum of count
+    # ["CATEGORY", <category_name>] sum of count
+    # ["TERM_CAT", <word>, <category_name>] sum of count
+    # ["TOTAL", "ALL"] count of all words
     def mapper(self, _, line):
         key_str, count_str = line.strip().split('\t')
         key = json.loads(key_str)
         count = int(count_str)
         yield "ALL", (key, count)
 
+    # Returns all to the reducer in the form:
+    # ALL, ["TERM", <word>] sum of count
+    # ALL, ["CATEGORY", <category_name>] sum of count
+    # ALL, ["TERM_CAT", <word>, <category_name>] sum of count
+    # ALL, ["TOTAL", "ALL"] count of all words
     def reducer(self, _, values):
-
         N = 0
         N_t = defaultdict(int)
         N_c = defaultdict(int)
@@ -55,6 +64,11 @@ class MRChiSquareFinal(MRJob):
                 output += f" {term}:{score:.4f}"
 
             yield None, output
+
+        all_terms = sorted(t for t in N_t.keys() if t.isalpha())
+        dictionary_line = "dictionary: " + " ".join(all_terms)
+
+        yield None, dictionary_line
 
 
 if __name__ == "__main__":
