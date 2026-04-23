@@ -1,11 +1,7 @@
 # Data-Intensive-Computing
 
-## How to run
-1. uv sync
-
-2. python -m main --data_file_path reviews_devset.json --stopwords_file_path stopwords.txt --output_file_path output.txt
-
-    - We may try to run this on the cluster. I have not tried it yet
+## How to run (locally and on cluster)
+sh bash_script.sh
 
 ## NOTE:
     - I think I finished these step:
