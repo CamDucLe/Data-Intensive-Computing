@@ -2,6 +2,7 @@ import json
 from mrjob.job import MRJob
 from collections import defaultdict
 from mrjob.protocol import RawValueProtocol
+import heapq
 
 class MRChiSquareFinal(MRJob):
     # Allows to save the results in the desired format
@@ -46,18 +47,17 @@ class MRChiSquareFinal(MRJob):
             Nt = N_t[term]
             Nc = N_c[category]
 
-            B = Nt - A
-            C = Nc - A
-            D = N - Nt - Nc + A
-
-            if (A+B)*(C+D)*(A+C)*(B+D) == 0:
+            denominator = Nt * (N - Nt) * Nc * (N - Nc)
+            
+            if denominator == 0:
                 continue
-
-            chi2 = (N * (A*D - B*C)**2) / ((A+B)*(C+D)*(A+C)*(B+D))
+            numerator = N * (A * N - Nt * Nc)**2
+            
+            chi2 = numerator / denominator
             results[category].append((term, chi2))
 
         for category in sorted(results.keys()):
-            top_terms = sorted(results[category], key=lambda x: -x[1])[:75]
+            top_terms = heapq.nlargest(75, results[category], key=lambda x: x[1])
 
             output = category
             for term, score in top_terms:
