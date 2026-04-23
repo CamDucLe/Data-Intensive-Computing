@@ -83,8 +83,10 @@ class ChiSquareJob(MRJob):
 
         unique_terms = preprocess_text(text, self.stopwords)
 
-        # Yield total review count for later use in chi-square calculation
-        yield ("<<N>>", None), 1
+        # # Yield total review count for later use in chi-square calculation
+        # # This can be computed by summing up the category counts (<<Nc>>) in the reducer
+        # # So we can skip emitting this to save some network traffic
+        # yield ("<<N>>", None), 1
 
         # Yield category-specific review count for later use in chi-square calculation
         yield ("<<Nc>>", category), 1
@@ -93,8 +95,11 @@ class ChiSquareJob(MRJob):
             # Yield total term exists in category for later use in chi-square calculation
             yield (term, category), 1  # A
 
-            # Yeild total reviews containing term for later use in chi-square calculation
+            # Yield total reviews containing term for later use in chi-square calculation
             yield ("<<Nt>>", term), 1
+
+    def pp_combiner(self, key, values):
+        yield key, sum(values)
 
     def pp_reducer(self, key, values):
         """Pass through global stats and category counts to the next step"""
@@ -117,9 +122,8 @@ class ChiSquareJob(MRJob):
         for original_key, value in values:
             k0, k1 = original_key
 
-            if k0 == "<<N>>":
+            if k0 == "<<Nc>>":
                 self.N += value
-            elif k0 == "<<Nc>>":
                 self.Nc[k1] = self.Nc.get(k1, 0) + value
             elif k0 == "<<Nt>>":
                 self.Nt[k1] = self.Nt.get(k1, 0) + value
@@ -199,6 +203,7 @@ class ChiSquareJob(MRJob):
             MRStep(
                 mapper_init=self.pp_mapper_init,
                 mapper=self.pp_mapper,
+                combiner=self.pp_combiner,
                 reducer=self.pp_reducer,
             ),
             MRStep(
