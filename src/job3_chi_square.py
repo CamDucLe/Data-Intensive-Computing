@@ -8,21 +8,12 @@ class MRChiSquareFinal(MRJob):
     OUTPUT_PROTOCOL = RawValueProtocol
 
     # Works with the output of the Job 2
-    # ["TERM", <word>] sum of count
-    # ["CATEGORY", <category_name>] sum of count
-    # ["TERM_CAT", <word>, <category_name>] sum of count
-    # ["TOTAL", "ALL"] count of all words
     def mapper(self, _, line):
         key_str, count_str = line.strip().split('\t')
         key = json.loads(key_str)
         count = int(count_str)
         yield "ALL", (key, count)
 
-    # Returns all to the reducer in the form:
-    # ALL, ["TERM", <word>] sum of count
-    # ALL, ["CATEGORY", <category_name>] sum of count
-    # ALL, ["TERM_CAT", <word>, <category_name>] sum of count
-    # ALL, ["TOTAL", "ALL"] count of all words
     def reducer(self, _, values):
         N = 0
         N_t = defaultdict(int)
@@ -30,12 +21,12 @@ class MRChiSquareFinal(MRJob):
         N_tc = {}
 
         for key, count in values:
-            if key[0] == "TOTAL":
+            if key[0] == "DOC_TOTAL":
                 N = count
+            elif key[0] == "DOC_CAT":
+                N_c[key[1]] = count
             elif key[0] == "TERM":
                 N_t[key[1]] = count
-            elif key[0] == "CATEGORY":
-                N_c[key[1]] = count
             elif key[0] == "TERM_CAT":
                 term, category = key[1], key[2]
                 N_tc[(term, category)] = count
@@ -65,6 +56,7 @@ class MRChiSquareFinal(MRJob):
 
             yield None, output
 
+        # dictionary
         all_terms = sorted(N_t.keys())
         dictionary_line = "dictionary: " + " ".join(all_terms)
 

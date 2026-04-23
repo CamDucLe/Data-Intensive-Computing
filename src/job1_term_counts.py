@@ -39,6 +39,13 @@ class MRWordCount(MRJob):
         for token in seen:
             yield (token, category), 1
 
+        # Count the number of docs
+        yield ("DOC", category), 1
+
+    # To avoid duplicates
+    def combiner(self, key, values):
+        yield key, sum(values)
+
     # Returns <word>, <category>, sum across all lines of the document
     def reducer(self, key, values):
         yield key, sum(values)

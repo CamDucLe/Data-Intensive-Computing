@@ -9,29 +9,28 @@ class MRChiSquarePrep(MRJob):
         key_str, count_str = line.strip().split("\t")
         key = json.loads(key_str)
         count = int(count_str)
-        term, category = key
 
-        yield ("TERM", term), count
+        # Caso especial: conteo de documentos
+        if key[0] == "DOC":
+            _, category = key
 
-        yield ("CATEGORY", category), count
+            # número de documentos por categoría
+            yield ("DOC_CAT", category), count
 
-        yield ("TERM_CAT", term, category), count
+            # total de documentos
+            yield ("DOC_TOTAL", "ALL"), count
 
-        yield ("TOTAL", "ALL"), count
+        else:
+            term, category = key
 
-    # For each:
-    # ["TERM", <word>] count
-    # ["CATEGORY", <category_name>] count
-    # ["TERM_CAT", <word>, <category_name>] count
-    # ["TOTAL", "ALL"] count (the total count)
+            # total por término
+            yield ("TERM", term), count
 
-    # Returns the sum of the values, obtaining:
-    # ["TERM", <word>] sum of count
-    # ["CATEGORY", <category_name>] sum of count
-    # ["TERM_CAT", <word>, <category_name>] sum of count
-    # ["TOTAL", "ALL"] count of words
-    def reducer(self, key, values):
-        yield key, sum(values)
+            # total por categoría (en términos, opcional)
+            yield ("CATEGORY", category), count
+
+            # término + categoría (A en chi-square)
+            yield ("TERM_CAT", term, category), count
 
 if __name__=="__main__":
     MRChiSquarePrep.run()
