@@ -7,6 +7,7 @@ The goal is to identify the **top 75 most relevant terms per category** and gene
 ---
 
 ## Project Structure
+```
 ├── job1_term_counts.py      # Term-document counts
 ├── job2_chi_squared.py      # Aggregates global statistics
 ├── job3_chi_final.py        # Computes χ² and top terms
@@ -14,6 +15,7 @@ The goal is to identify the **top 75 most relevant terms per category** and gene
 ├── stopwords.txt            # Stopwords list
 ├── data/
 │   └── reviews_devset.json  # Input dataset (JSON lines)
+```
 
 ## Requirements
 
