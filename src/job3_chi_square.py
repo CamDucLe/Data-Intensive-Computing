@@ -15,10 +15,10 @@ class MRChiSquareFinal(MRJob):
         yield "ALL", (key, count)
 
     def reducer(self, _, values):
-        N = 0
-        N_t = defaultdict(int)
-        N_c = defaultdict(int)
-        N_tc = {}
+        N = 0 # Total reviews
+        N_t = defaultdict(int) # Reviews with term t
+        N_c = defaultdict(int) # Reviews in category c
+        N_tc = {} # Reviews in category c with term t
 
         for key, count in values:
             if key[0] == "DOC_TOTAL":
@@ -29,7 +29,7 @@ class MRChiSquareFinal(MRJob):
                 N_t[key[1]] = count
             elif key[0] == "TERM_CAT":
                 term, category = key[1], key[2]
-                N_tc[(term, category)] = count
+                N_tc[(term, category)] = count # A
 
         results = defaultdict(list)
 

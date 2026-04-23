@@ -10,26 +10,22 @@ class MRChiSquarePrep(MRJob):
         key = json.loads(key_str)
         count = int(count_str)
 
-        # Caso especial: conteo de documentos
         if key[0] == "DOC":
             _, category = key
 
-            # número de documentos por categoría
+            # Reviews per category
             yield ("DOC_CAT", category), count
 
-            # total de documentos
+            # Total reviews
             yield ("DOC_TOTAL", "ALL"), count
 
         else:
             term, category = key
 
-            # total por término
+            # Reviews per term
             yield ("TERM", term), count
 
-            # total por categoría (en términos, opcional)
-            yield ("CATEGORY", category), count
-
-            # término + categoría (A en chi-square)
+            # Reviews per Term + Category (A in chi-square)
             yield ("TERM_CAT", term, category), count
 
 if __name__=="__main__":
