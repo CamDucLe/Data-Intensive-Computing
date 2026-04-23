@@ -5,12 +5,15 @@ from chi_square_job import ChiSquareJob
 
 
 os.environ["HADOOP_STREAMING_JAR"] = "/usr/lib/hadoop/tools/lib/hadoop-streaming.jar"
+N_MAPPERS = 16
+N_REDUCERS = 16
+
 
 def parse_arguments():
     """Parse command-line arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--is_local", type=str, default="true")
-    parser.add_argument("--data_file_path", type=str)
+    parser.add_argument("--data_file_path", type=str, required=True)
     parser.add_argument("--stopwords_file_path", type=str, default="stopwords.txt")
     parser.add_argument("--output_file_path", type=str, default="output.txt")
 
@@ -35,6 +38,8 @@ def main():
             "--python-bin", "/sw/venv/python312/python/bin/python",
             "--file", args.stopwords_file_path,  # Ensure the stopwords file is sent to the cluster
             "--stopwords_file_path", "stopwords.txt",
+            "--jobconf", f"mapreduce.job.maps={N_MAPPERS}",
+            "--jobconf", f"mapreduce.job.reduces={N_REDUCERS}",
             args.data_file_path,
         ]
 
