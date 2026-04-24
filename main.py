@@ -1,7 +1,9 @@
 import os
 import argparse
 
+import json
 from chi_square_job import ChiSquareJob
+from global_stats_job import GlobalStatsJob
 
 
 os.environ["HADOOP_STREAMING_JAR"] = "/usr/lib/hadoop/tools/lib/hadoop-streaming.jar"
@@ -24,25 +26,59 @@ def main():
     args = parse_arguments()
     is_local = args.is_local.lower() == "true"
 
-    # Run MapReduce chi-square computation #
+    # --- JOB 1: Pre-compute Global Statistics ---
     if is_local:
-        job_args = [
+        stats_job_args = [
             "-r", "local",
-            "--stopwords_file_path", os.path.abspath(args.stopwords_file_path),
+            "-q",
             os.path.abspath(args.data_file_path),
         ]
     else:
-        job_args = [
+        stats_job_args = [
             "-r", "hadoop",
+            "-q",
             "--hadoop-streaming-jar", "/usr/lib/hadoop/tools/lib/hadoop-streaming.jar",
             "--python-bin", "/sw/venv/python312/python/bin/python",
-            "--file", args.stopwords_file_path,  # Ensure the stopwords file is sent to the cluster
-            "--stopwords_file_path", "stopwords.txt",
             "--jobconf", f"mapreduce.job.maps={N_MAPPERS}",
             "--jobconf", f"mapreduce.job.reduces={N_REDUCERS}",
             args.data_file_path,
         ]
 
+    # Run Job 1
+    stats_job = GlobalStatsJob(args=stats_job_args)
+    with stats_job.make_runner() as stats_runner:
+        stats_runner.run()
+        
+        stats_dict = {}
+        for key, value in stats_job.parse_output(stats_runner.cat_output()):
+            stats_dict[key] = value
+            
+        with open("stats.json", "w") as f:
+            json.dump(stats_dict, f)
+
+    # --- JOB 2: Run MapReduce chi-square computation ---
+    if is_local:
+        job_args = [
+            "-r", "local",
+            "-q",
+            "--stopwords_file_path", os.path.abspath(args.stopwords_file_path),
+            "--stats_file_path", os.path.abspath("stats.json"),
+            os.path.abspath(args.data_file_path),
+        ]
+    else:
+        job_args = [
+            "-r", "hadoop",
+            "-q",
+            "--hadoop-streaming-jar", "/usr/lib/hadoop/tools/lib/hadoop-streaming.jar",
+            "--python-bin", "/sw/venv/python312/python/bin/python",
+            "--file", args.stopwords_file_path,  # Ensure the stopwords file is sent to the cluster
+            "--stopwords_file_path", "stopwords.txt",
+            "--file", "stats.json",              # Send stats.json to cluster
+            "--stats_file_path", "stats.json",
+            "--jobconf", f"mapreduce.job.maps={N_MAPPERS}",
+            "--jobconf", f"mapreduce.job.reduces={N_REDUCERS}",
+            args.data_file_path,
+        ]
 
     # Initialize the MapReduce job with the appropriate arguments
     job = ChiSquareJob(args=job_args)
@@ -52,18 +88,26 @@ def main():
         runner.run()
 
         results = []
+        all_top_terms = set()
 
         for key, value in job.parse_output(runner.cat_output()):
             results.append((key, value))
+            
+            # Extract terms for the merged dictionary
+            for item in value.split():
+                term = item.split(":")[0]
+                all_top_terms.add(term)
 
         results = sorted(results, key=lambda x: x[0])
+        
+        # Sort the deduplicated terms alphabetically and join with spaces
+        merged_dictionary = " ".join(sorted(all_top_terms))
 
-        # output_path = args.output_file_path
-        with open("output.txt", "w") as f:
+        output_path = args.output_file_path
+        with open(output_path, "w") as f:
+            f.write(merged_dictionary + "\n")
             for k, v in results:
                 f.write(f"{k} {v}\n")
-
-    # print(f"Output written to {output_path}")
 
     return
 
