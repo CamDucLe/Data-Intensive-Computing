@@ -17,7 +17,7 @@ else
     else
         DATA_FILE_PATH=$FULL_DATA_FILE_PATH
     fi
-    OUTPUT_FILE_PATH=/user/e12551211/output.txt
+    OUTPUT_FILE_PATH="$(pwd)/output.txt"
 
     # Remove the output file if it already exists
     hdfs dfs -rm -r -f $OUTPUT_FILE_PATH

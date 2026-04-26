@@ -1,6 +1,7 @@
 import re
 import sys
 import json
+import heapq
 
 from mrjob.job import MRJob
 from mrjob.step import MRStep
@@ -9,6 +10,7 @@ from mrjob.step import MRStep
 # This is not really clean but I tried to move helper functions and connstats to other files but it seems it does not work
 # TODO: check this as I used AI to generate this regex pattern
 DELIMITER_PATTERN: str = r"""[\s\d()\[\]{}.!?,;:+=\-_"'`~#@&*%€$§\\/]+"""
+COMPILED_DELIMITER_PATTERN = re.compile(DELIMITER_PATTERN)
 MIN_TOKEN_LENGTH: int = 2
 TOP_K_TERMS: int = 75
 
@@ -16,7 +18,15 @@ TOP_K_TERMS: int = 75
 def load_stopwords(
     file_path: str,
 ) -> set[str]:
-    """Load stopwords from a text file and return a set of stopwords"""
+    """
+    Load stopwords from a text file and return a set of stopwords
+
+    Args:
+        file_path: Path to the stopwords text file, where each line contains a single stopword
+
+    Returns:
+        A set of stopwords loaded from the file
+    """
     with open(file_path) as txt_file:
         stopwords = {line.strip() for line in txt_file if line.strip()}
 
@@ -26,7 +36,7 @@ def load_stopwords(
 def preprocess_text(
     text: str,
     stopwords: set[str],
-    delimiter_pattern: str = DELIMITER_PATTERN,
+    compiled_pattern=COMPILED_DELIMITER_PATTERN,
     min_token_length: int = MIN_TOKEN_LENGTH,
 ) -> set[str]:
     """
@@ -46,7 +56,7 @@ def preprocess_text(
         A set of unique, preprocessed terms extracted from the review text
     """
     lower_text = text.lower()
-    tokens = re.split(delimiter_pattern, lower_text)
+    tokens = compiled_pattern.split(lower_text)
     unique_terms = {
         token
         for token in tokens
@@ -58,7 +68,7 @@ def preprocess_text(
 
 class ChiSquareJob(MRJob):
     def configure_args(self):
-        """Register custom command-line arguments for external data files."""
+        """Register custom command-line arguments for external data files (stopwords and global stats)"""
         super().configure_args()
 
         self.add_passthru_arg(
@@ -66,127 +76,146 @@ class ChiSquareJob(MRJob):
             type=str,
             default='stopwords.txt',
         )
+        self.add_passthru_arg(
+            '--stats_file_path',
+            type=str,
+            default='stats.json',
+        )
 
     #########################
     # Reviews preprocessing #
     #########################
-    def pp_mapper_init(self):
+    def mapper_init(self):
+        """Initialize the mapper by loading stopwords into memory"""
         self.stopwords = load_stopwords(self.options.stopwords_file_path)
 
-    def pp_mapper(self, _, line):
-        """Preprocess each review text and emit (term, category) counts for each unique term in the review"""
+    def mapper(self, _, line):
+        """
+        Preprocess each review text and emit (term, category) counts for each unique term in the review
+        
+        Input:
+            - Key: None (not used)
+            - Value: A line of text from the input file, expected to be a JSON string representing a review
+
+        Output:
+            - Key: A term extracted from the review
+            - Value: A tuple containing the category and the count (always 1 in this case)
+        """
         # Load a review (a line of the input file) as a json object
         review = json.loads(line)
 
+        # Extract the category and review text
         category = review["category"]
         text = review["reviewText"]
 
         unique_terms = preprocess_text(text, self.stopwords)
 
-        # # Yield total review count for later use in chi-square calculation
-        # # This can be computed by summing up the category counts (<<Nc>>) in the reducer
-        # # So we can skip emitting this to save some network traffic
-        # yield ("<<N>>", None), 1
-
-        # Yield category-specific review count for later use in chi-square calculation
-        yield ("<<Nc>>", category), 1
-
         for term in unique_terms:
-            # Yield total term exists in category for later use in chi-square calculation
-            yield (term, category), 1  # A
+            yield term, (category, 1)
 
-            # Yield total reviews containing term for later use in chi-square calculation
-            yield ("<<Nt>>", term), 1
-
-    def pp_combiner(self, key, values):
-        yield key, sum(values)
-
-    def pp_reducer(self, key, values):
-        """Pass through global stats and category counts to the next step"""
-        # Do this because if simply use "yield key, sum(values)" <<N>>, <<Nc>>, <<Nt>> will be sent to different reducers
-        # But we need to ensure they are processed by the same reducer to compute global statistics for computing chi-square correctly in the next step
-        # Use this trick to ensure all global stats and category counts are sent to the same reducer by using a common key ("<<GLOBAL_STATS>>") for them
-        yield "<<GLOBAL_STATS>>", (key, sum(values))
-
-
-    ##########################
-    # Chi-square calculation #
-    ##########################
-    def ccs_reducer_init(self):
-        self.N = 0
-        self.Nc = {}
-        self.Nt = {}
-        self.A = {}
-
-    def ccs_reducer(self, key, values):
-        for original_key, value in values:
-            k0, k1 = original_key
-
-            if k0 == "<<Nc>>":
-                self.N += value
-                self.Nc[k1] = self.Nc.get(k1, 0) + value
-            elif k0 == "<<Nt>>":
-                self.Nt[k1] = self.Nt.get(k1, 0) + value
-            else:
-                # original_key is (term, category)
-                term, category = original_key
-                self.A[(term, category)] = self.A.get((term, category), 0) + value
-
-    def ccs_reducer_final(self):
+    def combiner(self, term, values):
         """
-        Compute chi-square statistic for a term against every categories.
+        Aggregate counts for the same term and category emitted by the mapper to reduce data transfer
+        
+        Input:
+            - Key: A term emitted by the mapper
+            - Value: An iterable of tuples, where each tuple contains a category and a count (always 1 in this case)
 
-        Chi-square formula (2x2 contingency table):
-            X^2(t, c) = N x (A*D - B*C)² / ((A+B)(C+D)(A+C)(B+D))
+        Output:
+            - Key: The same term
+            - Value: A tuple containing the category and the aggregated count for that term and category
 
-        Where:
-            A = reviews in category c that contain term t
-            C = reviews in category c that do NOT contain t = total_reviews_in_category - A
-            B = reviews NOT in category c that contain t = total_reviews_containing_term - A
-            D = reviews NOT in category c and NOT containing t = total_reviews - (A + B + C)
+        Note:
+            This will help us calculate A and Nt
+            We have already had N and Nc from the first job
         """
-        # After processing all keys, we have the global stats and category counts
-        # which are needed to compute chi-square for every (term, category) pair
+        category_counts = {}
+        for category, count in values:
+            category_counts[category] = category_counts.get(category, 0) + count
 
-        total_reviews = self.N
-        for (term, category), A in self.A.items():
-            total_reviews_in_category = self.Nc.get(category, 0)
-            total_reviews_containing_term = self.Nt.get(term, 0)
+        for category, count in category_counts.items():
+            yield term, (category, count)
 
-            # Derive B, C, D from A and the global stats
-            B = total_reviews_containing_term - A
-            C = total_reviews_in_category - A
-            D = total_reviews - (A + B + C)
+    def reducer_init(self):
+        """Initialize the reducer by loading global statistics (N and Nc) into memory"""
+        with open(self.options.stats_file_path, "r") as f:
+            self.stats = json.load(f)
 
-            # Compute chi-square statistic for this (term, category) pair
-            numerator = (A * D - B * C) ** 2 * (A + B + C + D)
-            denominator = (A + B) * (C + D) * (A + C) * (B + D)
-            if denominator == 0:
-                continue
-            else:
+        self.N = self.stats.get("N", 0)
+
+    def reducer(self, term, values):
+        """
+        Calculate Chi-Square for the term across all categories it appears in
+        
+        Input:
+            - Key: A term emitted by the mapper and possibly aggregated by the combiner
+            - Value: An iterable of tuples, where each tuple contains a category and the aggregated count for that term and category
+
+        Output:
+            - Key: A category in which the term appears
+            - Value: A tuple containing the term and its chi-square value for that category
+
+        Note:
+            The formula for chi-square is:
+                X^2 = N * (A * N - Nt * Nc)² / (Nt * (N - Nt) * Nc * (N - Nc))
+
+            Where:
+                - A is the count of reviews in category c that contain the term
+                - Nt is the total count of reviews that contain the term across all categories
+                - Nc is the total count of reviews in category c
+                - N is the total count of reviews across all categories
+
+
+            This formular is a simplified version of the original chi-square formula for 2x2 contingency tables. The original formula is:
+                X^2 = (N * (AD - BC)²) / ((A + B) * (C + D) * (A + C) * (B + D))
+
+            Where:
+                - A is the count of reviews in category c that contain the term
+                - B is the count of reviews in category c that do NOT contain the term
+                - C is the count of reviews NOT in category c that contain the term
+                - D is the count of reviews NOT in category c that do NOT contain the term
+                - N is the total count of reviews across all categories
+        """
+        A_dict = {}
+        for category, count in values:
+            A_dict[category] = A_dict.get(category, 0) + count
+
+        Nt = sum(A_dict.values())
+        N = self.N
+
+        # Precompute the term-specific part of the denominator outside the loop
+        term_denom_base = Nt * (N - Nt)
+
+        # If the term appears in EVERY review or NO reviews, variance is 0
+        if term_denom_base == 0:
+            return
+
+        # Calculate chi-square for the term in each category it appears in
+        for category, A in A_dict.items():
+            # Get Nc for the category calculated from the 1st job
+            Nc = self.stats.get(f"Nc_{category}", 0)
+
+            # Use simplified chi-square formula for 2x2 contingency tables
+            numerator = (A * N - Nt * Nc) ** 2 * N
+            denominator = term_denom_base * Nc * (N - Nc)
+            
+            if denominator != 0:
                 chi_square_value = numerator / denominator
                 yield category, (term, chi_square_value)
-
 
     ######################
     # Ordering the terms #
     ######################
     def ott_reducer(self, category, term_chi_pairs):
-        """
-        One line for each product category (categories in alphabetic order),
-        that contains the top 75 most discriminative terms for the category
-        according to the chi-square test in descending order
-        """
-        # Convert term_chi_pairs from generator to list to sort and select top K terms
-        term_chi_pairs = list(term_chi_pairs)
+        # Finds the top 75 efficiently without sorting the whole dataset
+        top_terms = heapq.nsmallest(
+            TOP_K_TERMS, 
+            term_chi_pairs, 
+            key=lambda x: (-x[1], x[0])  # Sort by chi-sq desc, then term asc
+        )
 
-        # Sort and select top K terms with highest chi-square values for this category
-        term_chi_pairs.sort(key=lambda x: (-x[1], x[0]))
-        top_terms = term_chi_pairs[:TOP_K_TERMS]
-
-        # Format the output as term_1st:chi^2_value term_2nd:chi^2_value ... term_75th:chi^2_value
+        # Format the top terms as "term:chi_square_value" and join them with spaces
         formatted_top_terms = ' '.join(f"{term}:{score:.4f}" for term, score in top_terms)
-
         yield category, formatted_top_terms
 
 
@@ -201,15 +230,11 @@ class ChiSquareJob(MRJob):
         """
         return [
             MRStep(
-                mapper_init=self.pp_mapper_init,
-                mapper=self.pp_mapper,
-                combiner=self.pp_combiner,
-                reducer=self.pp_reducer,
-            ),
-            MRStep(
-                reducer_init=self.ccs_reducer_init,
-                reducer=self.ccs_reducer,
-                reducer_final=self.ccs_reducer_final,
+                mapper_init=self.mapper_init,
+                mapper=self.mapper,
+                combiner=self.combiner,
+                reducer_init=self.reducer_init,
+                reducer=self.reducer,
             ),
             MRStep(
                 reducer=self.ott_reducer,
