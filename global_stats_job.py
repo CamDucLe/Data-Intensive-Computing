@@ -24,7 +24,8 @@ class GlobalStatsJob(MRJob):
         only the 'category' field, which is the only field needed by this job.
 
         Input:
-            - str line (raw JSON line representing one review)
+            key:        None (ignored)
+            value:      str line (raw JSON line representing one review)
 
         Output:
             ("N",          1) - contributes to the total review count
