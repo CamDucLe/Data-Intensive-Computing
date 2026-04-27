@@ -6,9 +6,6 @@ import heapq
 from mrjob.job import MRJob
 from mrjob.step import MRStep
 
-
-# This is not really clean but I tried to move helper functions and connstats to other files but it seems it does not work
-# TODO: check this as I used AI to generate this regex pattern
 DELIMITER_PATTERN: str = r"""[\s\d()\[\]{}.!?,;:+=\-_"'`~#@&*%€$§\\/]+"""
 COMPILED_DELIMITER_PATTERN = re.compile(DELIMITER_PATTERN)
 MIN_TOKEN_LENGTH: int = 2
