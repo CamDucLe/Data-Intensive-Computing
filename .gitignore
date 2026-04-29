@@ -206,8 +206,8 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# PDF of assignment
-*.pdf
-
-# Trash files from MacOS
+# Trash MacOS files
 .DS_Store
+
+# PDF of the assignment
+*.pdf

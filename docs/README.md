@@ -75,7 +75,7 @@ The recommended local workflow uses `uv`, which is referenced in `bash_script.sh
 Use the development dataset shipped with the repository:
 
 ```bash
-sh bash_script.sh
+sh src/bash_script.sh
 ```
 
 The script sets the local execution path, runs `main.py`, and writes the result to `output.txt`.

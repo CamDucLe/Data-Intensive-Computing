@@ -16,8 +16,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--is_local", type=str, default="true")
     parser.add_argument("--data_file_path", type=str, required=True)
-    parser.add_argument("--stopwords_file_path", type=str, default="stopwords.txt")
-    parser.add_argument("--output_file_path", type=str, default="output.txt")
+    parser.add_argument("--stopwords_file_path", type=str, default="data/stopwords.txt")
+    parser.add_argument("--output_file_path", type=str, default="data/output.txt")
 
     return parser.parse_args()
 
@@ -54,7 +54,7 @@ def main():
             stats_dict[key] = value
 
         # Write the global statistics to a JSON file to be used by the chi-square job
-        with open("stats.json", "w") as f:
+        with open("data/stats.json", "w") as f:
             json.dump(stats_dict, f)
 
     ##### JOB 2: Run MapReduce chi-square computation #####
@@ -63,7 +63,7 @@ def main():
             "-r", "local",
             "-q",
             "--stopwords_file_path", os.path.abspath(args.stopwords_file_path),
-            "--stats_file_path", os.path.abspath("stats.json"),
+            "--stats_file_path", os.path.abspath("data/stats.json"),
             os.path.abspath(args.data_file_path),
         ]
     else:
@@ -74,7 +74,7 @@ def main():
             "--python-bin", "/sw/venv/python312/python/bin/python",
             "--file", args.stopwords_file_path,  # Ensure the stopwords file is sent to the cluster
             "--stopwords_file_path", "stopwords.txt",
-            "--file", "stats.json",  # Send stats.json to cluster
+            "--file", "data/stats.json",  # Send stats.json to cluster
             "--stats_file_path", "stats.json",
             "--jobconf", f"mapreduce.job.maps={N_MAPPERS}",
             "--jobconf", f"mapreduce.job.reduces={N_REDUCERS}",
